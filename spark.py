@@ -92,7 +92,6 @@ if __name__ == '__main__':
         .withColumn("day", F.dayofmonth(col("startTs"))) \
         .withColumn("hour", F.hour(col("startTs"))) \
         .withColumn("isWeekend", is_weekend(F.dayofweek(col("startTs"))))
-    time_df.show()
 
     time_count = time_df.count()
     song_count = songs_df.count()
@@ -100,7 +99,7 @@ if __name__ == '__main__':
     user_count = user_df.count()
     songplay_count = songplay_df.count()
 
-    print(f"""
+    print(f"""*** READ ***\n
        time_count= {time_count}
        song_count= {song_count}
        artist_count= {artist_count}
@@ -120,7 +119,7 @@ if __name__ == '__main__':
     read_user_df = read_log_data(spark=spark, bucket="output", prefix="dim_user", schema=user_df.schema)
     read_songplay_df = read_log_data(spark=spark, bucket="output", prefix="fact_songplays", schema=songplay_df.schema)
 
-    print(f"""***READ ***\n
+    print(f"""*** WRITTEN ***\n
        time_count= {read_time_df.count()}
        song_count= {read_song_df.count()}
        artist_count= {read_artist_df.count()}

@@ -25,13 +25,12 @@ def write_log_data(df: DataFrame, bucket: str, prefix: str):
     file_type = 'json'
     date_prefix = f"{time_path.year}{time_path.month}{time_path.day}"
     path = f"{bucket}/{prefix}"
-    df.write.format(file_type).mode('append').save(path)
+    df.write.format(file_type).mode('overwrite').save(path)
 
 
 def read_log_data(spark: SparkSession, bucket: str, prefix: str, schema: StructType) -> DataFrame:
     path = f"/Users/christopherlomeli/Source/courses/udacity/data-engineer/udacity-spark-model/{bucket}/{prefix}"
     path = f"{bucket}/{prefix}"
-    print(f"READING {path}")
     df = spark.read.schema(schema=schema).json(path)
 
 
