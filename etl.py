@@ -1,7 +1,6 @@
 from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType
 
-# from pyspark.sql.functions import isnan, count, when, col, desc, udf, col, sort_array, asc, avg, date_format, year, \
-#     month, dayofmonth
 from spark_local_files import *
 
 if __name__ == '__main__':
@@ -14,14 +13,14 @@ if __name__ == '__main__':
     song_data_df.printSchema()
     song_data_df.createOrReplaceTempView("song_data_table")
 
-    function = udf(lambda x: int(x))
+    function = F.udf(lambda x: int(x))
 
     log_data_df = load_log_data(spark=spark) \
         .withColumnRenamed("userId", "userIdString")
     log_data_df = log_data_df \
-        .withColumn('userId', col("userIdString").cast(IntegerType())) \
-        .withColumn('startTs', (col("ts") / 1000).cast("timestamp")) \
-        .withColumn('startDateStr', F.date_format(col('startTs'), "yyyyMMddHHmmss"))
+        .withColumn('userId', F.col("userIdString").cast(IntegerType())) \
+        .withColumn('startTs', (F.col("ts") / 1000).cast("timestamp")) \
+        .withColumn('startDateStr', F.date_format(F.col('startTs'), "yyyyMMddHHmmss"))
     log_data_df.printSchema()
     log_data_df.show(n=2, truncate=False)
 
@@ -83,15 +82,15 @@ if __name__ == '__main__':
     songplay_df.printSchema()
     songplay_df.show(n=2, truncate=False)
 
-    is_weekend = udf(lambda x: x in [6, 0])
+    is_weekend = F.udf(lambda x: x in [6, 0])
 
     time_df = songplay_df.select(["time_id", "startTs"]) \
         .dropDuplicates() \
-        .withColumn("year", F.year(col("startTs"))) \
-        .withColumn("month", F.month(col("startTs"))) \
-        .withColumn("day", F.dayofmonth(col("startTs"))) \
-        .withColumn("hour", F.hour(col("startTs"))) \
-        .withColumn("isWeekend", is_weekend(F.dayofweek(col("startTs"))))
+        .withColumn("year", F.year(F.col("startTs"))) \
+        .withColumn("month", F.month(F.col("startTs"))) \
+        .withColumn("day", F.dayofmonth(F.col("startTs"))) \
+        .withColumn("hour", F.hour(F.col("startTs"))) \
+        .withColumn("isWeekend", is_weekend(F.dayofweek(F.col("startTs"))))
 
     time_count = time_df.count()
     song_count = songs_df.count()

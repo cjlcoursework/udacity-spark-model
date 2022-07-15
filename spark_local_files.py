@@ -2,10 +2,7 @@ from datetime import datetime
 
 from pyspark.sql import SparkSession
 from pyspark.sql.dataframe import DataFrame
-from pyspark.sql.functions import isnan, count, when, col, desc, udf, col, sort_array, asc, avg
-from pyspark.sql.functions import sum as Fsum
-from pyspark.sql.window import Window
-from pyspark.sql.types import IntegerType, StructType
+from pyspark.sql.types import StructType
 
 
 def load_song_data(spark: SparkSession) -> DataFrame:
@@ -29,10 +26,7 @@ def write_log_data(df: DataFrame, bucket: str, prefix: str):
 
 
 def read_log_data(spark: SparkSession, bucket: str, prefix: str, schema: StructType) -> DataFrame:
-    path = f"/Users/christopherlomeli/Source/courses/udacity/data-engineer/udacity-spark-model/{bucket}/{prefix}"
     path = f"{bucket}/{prefix}"
     df = spark.read.schema(schema=schema).json(path)
-
-
     return df
 
