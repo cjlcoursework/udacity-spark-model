@@ -5,6 +5,7 @@ __pycache__/
 
 # Application
 output/
+lake/
 .DS_Store
 */.DS_Store
 
