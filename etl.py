@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from pyspark.sql import SparkSession
@@ -6,23 +7,29 @@ from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.types import IntegerType
 from pyspark.sql.types import StructType
 
+RUN_ENVIRONMENT = "LOCAL"
+APP_NAME = "cjl-udacity-project"
+
 # create_spark_session
 spark = SparkSession\
     .builder\
-    .appName("Udacity Datalake Project") \
+    .appName(APP_NAME) \
     .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:2.7.0") \
     .getOrCreate()
 
-RUN_ENVIRONMENT = "LOCAL"
 
 if RUN_ENVIRONMENT == "EMR":
     # ROOT_DIRECTORY = "s3a:/udacity-dend"
-    ROOT_DIRECTORY = "s3a://cjl-spark-stage"
+    STAGE_DIRECTORY = "s3a://cjl-spark-stage/data"
+    LAKE_DIRECTORY = "s3a://cjl-spark-stage/lake"
+    BAD_RECORDS = "s3a://cjl-spark-stage/bad_records"
     sc = spark.sparkContext
     log4jLogger = sc._jvm.org.apache.log4j
     logging = log4jLogger.LogManager.getLogger("ETL")
 else:
-    ROOT_DIRECTORY = "../"
+    STAGE_DIRECTORY = "data"
+    LAKE_DIRECTORY = "lake"
+    BAD_RECORDS = "bad_records"
     import logging
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
@@ -30,33 +37,45 @@ else:
 
 class MyFileSystem:
 
-    file_type: str = "json"
+    output_file_type: str = "parquet"
+    schemas : dict = {
+        "song_data": StructType.fromJson(json.loads("""{"fields":[{"metadata":{},"name":"artist_id","nullable":true,"type":"string"},{"metadata":{},"name":"artist_latitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_location","nullable":true,"type":"string"},{"metadata":{},"name":"artist_longitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_name","nullable":true,"type":"string"},{"metadata":{},"name":"duration","nullable":true,"type":"double"},{"metadata":{},"name":"num_songs","nullable":true,"type":"long"},{"metadata":{},"name":"song_id","nullable":true,"type":"string"},{"metadata":{},"name":"title","nullable":true,"type":"string"},{"metadata":{},"name":"year","nullable":true,"type":"long"}],"type":"struct"}""")),
+        "log_data": StructType.fromJson(json.loads("""{"fields":[{"metadata":{},"name":"artist","nullable":true,"type":"string"},{"metadata":{},"name":"auth","nullable":true,"type":"string"},{"metadata":{},"name":"firstName","nullable":true,"type":"string"},{"metadata":{},"name":"gender","nullable":true,"type":"string"},{"metadata":{},"name":"itemInSession","nullable":true,"type":"long"},{"metadata":{},"name":"lastName","nullable":true,"type":"string"},{"metadata":{},"name":"length","nullable":true,"type":"double"},{"metadata":{},"name":"level","nullable":true,"type":"string"},{"metadata":{},"name":"location","nullable":true,"type":"string"},{"metadata":{},"name":"method","nullable":true,"type":"string"},{"metadata":{},"name":"origSong","nullable":true,"type":"string"},{"metadata":{},"name":"page","nullable":true,"type":"string"},{"metadata":{},"name":"registration","nullable":true,"type":"double"},{"metadata":{},"name":"sessionId","nullable":true,"type":"long"},{"metadata":{},"name":"song","nullable":true,"type":"string"},{"metadata":{},"name":"status","nullable":true,"type":"long"},{"metadata":{},"name":"ts","nullable":true,"type":"long"},{"metadata":{},"name":"userAgent","nullable":true,"type":"string"},{"metadata":{},"name":"userId","nullable":true,"type":"string"}],"type":"struct"}"""))
+    }
 
-    def __init__(self, root: str, input_data: str = "data", output_data: str = "output", perform_validations : bool = True):
-        self.root = root
-        if self.root != "" and not self.root.endswith("/"):
-            self.root = self.root + "/"
+    def __init__(self, input_data: str = "data", output_data: str = "output", perform_validations : bool = True):
         self.input_folder = input_data
         self.output_folder = output_data
         self.perform_validations = perform_validations
+        # with open('songs_schema.json', 'r') as f:
+        #     f = json.load(f)
+        #     self.schemas["song_data"] = StructType.fromJson(f)
+        # with open('logs_schema.json', 'r') as f:
+        #     f = json.load(f)
+        #     self.schemas["log_data"] = StructType.fromJson(f)
+        #
 
-    def read_fs_data(self, prefix: str) -> DataFrame:
-        path = f"""{self.root}{self.input_folder}/{prefix}"""
+    def read_fs_data(self, prefix: str ) -> DataFrame:
+        path = f"""{self.input_folder}/{prefix}"""
+        # .schema(self.schemas[prefix])\
         logging.info(f"READING from : {path}")
-        df = spark.read.json(path)
+        df = spark.read \
+            .option("recursiveFileLookup", "true")\
+            .json(path)
         logging.info(f"""READ {df.count()} song records """)
+        logging.info(f"SCHEMA: {df.schema.json()}")
         return df
 
     def write_fs_data(self, df: DataFrame, prefix: str):
-        path = f"{self.root}{self.output_folder}/{prefix}"
-        df.write.format(self.file_type).mode('overwrite').save(path)
+        path = f"{self.output_folder}/{prefix}"
+        df.write.format(self.output_file_type).mode('overwrite').save(path)
         logging.info(f"""WRITING to path: {path},    counted {df.count()} records""")
 
         if self.perform_validations:
             self.verify_written_data(path=path, schema=df.schema)
 
     def verify_written_data(self, path: str, schema: StructType) -> DataFrame:
-        df = spark.read.format(self.file_type).schema(schema=schema).load(path)
+        df = spark.read.format(self.output_file_type).schema(schema=schema).load(path)
         logging.info(f"""VALIDATE : {path},        read back {df.count()} records""")
         return df
 
@@ -170,12 +189,10 @@ def process_log_data(fs: MyFileSystem):
 
 def main():
     # spark session is global so I declare logging based on environment
-
     # put all filesystem logic into a class
     fs = MyFileSystem(
-        root=ROOT_DIRECTORY,
-        input_data="data",
-        output_data="output",
+        input_data=STAGE_DIRECTORY,
+        output_data=LAKE_DIRECTORY,
         perform_validations=True)
 
     process_song_data(fs=fs)

@@ -1,0 +1,65 @@
+{
+  "fields": [
+    {
+      "metadata": {},
+      "name": "artist_id",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "artist_latitude",
+      "nullable": true,
+      "type": "double"
+    },
+    {
+      "metadata": {},
+      "name": "artist_location",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "artist_longitude",
+      "nullable": true,
+      "type": "double"
+    },
+    {
+      "metadata": {},
+      "name": "artist_name",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "duration",
+      "nullable": true,
+      "type": "double"
+    },
+    {
+      "metadata": {},
+      "name": "num_songs",
+      "nullable": true,
+      "type": "long"
+    },
+    {
+      "metadata": {},
+      "name": "song_id",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "title",
+      "nullable": true,
+      "type": "string"
+    },
+    {
+      "metadata": {},
+      "name": "year",
+      "nullable": true,
+      "type": "long"
+    }
+  ],
+  "type": "struct"
+}
