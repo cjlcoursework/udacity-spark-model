@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from typing import List, Union
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -7,16 +8,19 @@ from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.types import IntegerType
 from pyspark.sql.types import StructType
 
-RUN_ENVIRONMENT = "EMR"
 APP_NAME = "cjl-udacity-project"
-SPARK_VERSION = 3
+FEATURE_PARTITIONED_WRITES : bool = True
+FEATURE_PARTITIONED_WRITES : bool = True
 
 # create_spark_session
-spark = SparkSession\
-    .builder\
+spark = SparkSession \
+    .builder \
     .appName(APP_NAME) \
     .getOrCreate()
 
+# Configurations
+RUN_ENVIRONMENT = "LOCAL"
+EMR_VERSION: int = 6
 
 if RUN_ENVIRONMENT == "EMR":
     # STAGE_DIRECTORY = "s3:/udacity-dend"
@@ -32,43 +36,54 @@ else:
     LAKE_DIRECTORY = "lake"
     BAD_RECORDS = "bad_records"
     import logging
+
     logging.basicConfig()
     logging.getLogger().setLevel(logging.INFO)
 
 
-class MyFileSystem:
+# Code
 
+class MyFileSystem:
     output_file_type: str = "parquet"
     schemas: dict = {
-        "song_data": StructType.fromJson(json.loads("""{"fields":[{"metadata":{},"name":"artist_id","nullable":true,"type":"string"},{"metadata":{},"name":"artist_latitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_location","nullable":true,"type":"string"},{"metadata":{},"name":"artist_longitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_name","nullable":true,"type":"string"},{"metadata":{},"name":"duration","nullable":true,"type":"double"},{"metadata":{},"name":"num_songs","nullable":true,"type":"long"},{"metadata":{},"name":"song_id","nullable":true,"type":"string"},{"metadata":{},"name":"title","nullable":true,"type":"string"},{"metadata":{},"name":"year","nullable":true,"type":"long"}],"type":"struct"}""")),
-        "log_data": StructType.fromJson(json.loads("""{"fields":[{"metadata":{},"name":"artist","nullable":true,"type":"string"},{"metadata":{},"name":"auth","nullable":true,"type":"string"},{"metadata":{},"name":"firstName","nullable":true,"type":"string"},{"metadata":{},"name":"gender","nullable":true,"type":"string"},{"metadata":{},"name":"itemInSession","nullable":true,"type":"long"},{"metadata":{},"name":"lastName","nullable":true,"type":"string"},{"metadata":{},"name":"length","nullable":true,"type":"double"},{"metadata":{},"name":"level","nullable":true,"type":"string"},{"metadata":{},"name":"location","nullable":true,"type":"string"},{"metadata":{},"name":"method","nullable":true,"type":"string"},{"metadata":{},"name":"origSong","nullable":true,"type":"string"},{"metadata":{},"name":"page","nullable":true,"type":"string"},{"metadata":{},"name":"registration","nullable":true,"type":"double"},{"metadata":{},"name":"sessionId","nullable":true,"type":"long"},{"metadata":{},"name":"song","nullable":true,"type":"string"},{"metadata":{},"name":"status","nullable":true,"type":"long"},{"metadata":{},"name":"ts","nullable":true,"type":"long"},{"metadata":{},"name":"userAgent","nullable":true,"type":"string"},{"metadata":{},"name":"userId","nullable":true,"type":"string"}],"type":"struct"}"""))
+        "song_data": StructType.fromJson(json.loads(
+            """{"fields":[{"metadata":{},"name":"artist_id","nullable":true,"type":"string"},{"metadata":{},"name":"artist_latitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_location","nullable":true,"type":"string"},{"metadata":{},"name":"artist_longitude","nullable":true,"type":"double"},{"metadata":{},"name":"artist_name","nullable":true,"type":"string"},{"metadata":{},"name":"duration","nullable":true,"type":"double"},{"metadata":{},"name":"num_songs","nullable":true,"type":"long"},{"metadata":{},"name":"song_id","nullable":true,"type":"string"},{"metadata":{},"name":"title","nullable":true,"type":"string"},{"metadata":{},"name":"year","nullable":true,"type":"long"}],"type":"struct"}""")),
+        "log_data": StructType.fromJson(json.loads(
+            """{"fields":[{"metadata":{},"name":"artist","nullable":true,"type":"string"},{"metadata":{},"name":"auth","nullable":true,"type":"string"},{"metadata":{},"name":"firstName","nullable":true,"type":"string"},{"metadata":{},"name":"gender","nullable":true,"type":"string"},{"metadata":{},"name":"itemInSession","nullable":true,"type":"long"},{"metadata":{},"name":"lastName","nullable":true,"type":"string"},{"metadata":{},"name":"length","nullable":true,"type":"double"},{"metadata":{},"name":"level","nullable":true,"type":"string"},{"metadata":{},"name":"location","nullable":true,"type":"string"},{"metadata":{},"name":"method","nullable":true,"type":"string"},{"metadata":{},"name":"origSong","nullable":true,"type":"string"},{"metadata":{},"name":"page","nullable":true,"type":"string"},{"metadata":{},"name":"registration","nullable":true,"type":"double"},{"metadata":{},"name":"sessionId","nullable":true,"type":"long"},{"metadata":{},"name":"song","nullable":true,"type":"string"},{"metadata":{},"name":"status","nullable":true,"type":"long"},{"metadata":{},"name":"ts","nullable":true,"type":"long"},{"metadata":{},"name":"userAgent","nullable":true,"type":"string"},{"metadata":{},"name":"userId","nullable":true,"type":"string"}],"type":"struct"}"""))
     }
 
-    def __init__(self, input_data: str = "data", output_data: str = "output", perform_validations : bool = True):
+    def __init__(self, input_data: str = "data", output_data: str = "output", perform_validations: bool = True):
         self.input_folder = input_data
         self.output_folder = output_data
         self.perform_validations = perform_validations
 
-    def read_fs_data(self, prefix: str ) -> DataFrame:
+    def read_fs_data(self, prefix: str) -> DataFrame:
         path = f"""{self.input_folder}/{prefix}"""
-        if SPARK_VERSION == 2:
-          if prefix == "song_data":
-              path = f"""{self.input_folder}/{prefix}/*/*/*/*.json"""
-          else:
-              path = f"""{self.input_folder}/{prefix}/*/*/*.json"""
+        emr: int = int(EMR_VERSION)
+        if emr < 6:
+            if prefix == "song_data":
+                path = f"""{self.input_folder}/{prefix}/*/*/*/*.json"""
+            else:
+                path = f"""{self.input_folder}/{prefix}/*/*/*.json"""
 
         logging.info(f"READING from : {path}")
         df = spark.read \
             .schema(self.schemas[prefix]) \
-            .option("recursiveFileLookup", "true")\
+            .option("recursiveFileLookup", "true") \
             .json(path)
         logging.info(f"""READ {df.count()} song records """)
         # logging.info(f"SCHEMA: {df.schema.json()}")
         return df
 
-    def write_fs_data(self, df: DataFrame, prefix: str):
+    def write_fs_data(self, df: DataFrame, prefix: str, partitions: List[str] = []):
         path = f"{self.output_folder}/{prefix}"
-        df.write.format(self.output_file_type).mode('overwrite').save(path)
+        dfw = df.write \
+            .format(self.output_file_type) \
+            .partitionBy(partitions) \
+            .mode('overwrite')
+        if len(partitions) == 0:
+            dfw.partitionBy(*partitions)
+        dfw.save(path)
         logging.info(f"""WRITING to path: {path},    counted {df.count()} records""")
 
         if self.perform_validations:
@@ -81,7 +96,6 @@ class MyFileSystem:
 
 
 def process_song_data(fs: MyFileSystem) -> DataFrame:
-
     # get filepath to song data file - append to fs
     song_data = "song_data"
 
@@ -97,7 +111,7 @@ def process_song_data(fs: MyFileSystem) -> DataFrame:
          """)
 
     # write songs table to parquet files
-    fs.write_fs_data(songs_df, "dim_song")
+    fs.write_fs_data(songs_df, "dim_song", partitions=["year"])
 
     # extract columns to create artists table
     artist_df = spark.sql("""
@@ -112,7 +126,6 @@ def process_song_data(fs: MyFileSystem) -> DataFrame:
 
 
 def process_log_data(fs: MyFileSystem):
-
     # get filepath to log data file
     log_data = "log_data"
 
@@ -121,10 +134,13 @@ def process_log_data(fs: MyFileSystem):
         .withColumnRenamed("userId", "userIdString")
 
     # filter by actions for song plays and do transforms
-    log_df = stage_log_df.filter(F.col("page") == "NextSong")\
+    log_df = stage_log_df.filter(F.col("page") == "NextSong") \
         .withColumn('userId', F.col("userIdString").cast(IntegerType())) \
         .withColumn('startTs', (F.col("ts") / 1000).cast("timestamp")) \
-        .withColumn('time_id', F.date_format(F.col('startTs'), "yyyyMMddHHmmss"))
+        .withColumn('time_id', F.date_format(F.col('startTs'), "yyyyMMddHHmmss")) \
+        .withColumn("year", F.year(F.col("startTs"))) \
+        .withColumn("month", F.month(F.col("startTs"))) \
+        .withColumn("day", F.dayofmonth(F.col("startTs")))
 
     log_df.createOrReplaceTempView("log_data_table")
 
@@ -143,16 +159,13 @@ def process_log_data(fs: MyFileSystem):
     # get_timestamp = udf()
     is_weekend = F.udf(lambda x: x in [6, 0])
 
-    time_df = log_df.select(["time_id", "startTs"]) \
+    time_df = log_df.select(["time_id", "startTs", "year", "month", "day"]) \
         .dropDuplicates() \
-        .withColumn("year", F.year(F.col("startTs"))) \
-        .withColumn("month", F.month(F.col("startTs"))) \
-        .withColumn("day", F.dayofmonth(F.col("startTs"))) \
         .withColumn("hour", F.hour(F.col("startTs"))) \
         .withColumn("isWeekend", is_weekend(F.dayofweek(F.col("startTs"))))
 
     # write time table to parquet files partitioned by year and month
-    fs.write_fs_data(time_df, "dim_time")
+    fs.write_fs_data(df=time_df, prefix="dim_time", partitions=["year", "month", "day"])
 
     # read in song data to use for songplays table
 
@@ -168,6 +181,9 @@ def process_log_data(fs: MyFileSystem):
         , sessionId
         , location
         , userAgent
+        , L.year
+        , L.month
+        , L.day
     from log_data_table L
     join song_data_table S on S.title = L.song )
       select
@@ -180,11 +196,14 @@ def process_log_data(fs: MyFileSystem):
         , sessionId
         , location
         , userAgent
+        , year
+        , month
+        , day
     from X
     """)
 
     # write songplays table to parquet files partitioned by year and month
-    fs.write_fs_data(songplay_df, "fact_songplays")
+    fs.write_fs_data(songplay_df, "fact_songplays", partitions=["year", "month", "day"])
 
 
 def main():
