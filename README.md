@@ -9,20 +9,41 @@
 
 ---
 ### Issues
-- [ ] EMR version 5.28.0 has `python2` by default -- So I set environment variables to `python3`
+- [ ] <font color='red'>EMR version 5.28.0 has `python2` by default -- rather than installing python3, I just point pyspark to `python3`</font>
   ```
     [hadoop@ip-172-31-19-83 ~]$ export PYSPARK_PYTHON=/usr/bin/python3
     [hadoop@ip-172-31-19-83 ~]$ export PYSPARK_DRIVER_PYTHON=/usr/bin/python3
   ```
 
-- [ ] EMR version 5.28.0 has Spark 2 version while version 6 (eg. 6.50) has Spark 3
-  - Spark 2 - does not support recursiveFileLookup -- needed to get to the data level with wildcards e.g. `*/*/*,json`
-  - Spark 3 - recurse with recursiveFileLookup and just supply the root path
+- [ ] <font color='red'>EMR version 5.28.0 has Spark 2 version while version 6 (eg. 6.50) has Spark 3</font>
+  - `Spark 2` - some Spark versions did not support recursiveFileLookup -- I needed to get to a specific data level with wildcards e.g. `*/*/*.json`
+  - `Spark 3` - recurse with recursiveFileLookup and just supply the root path
 
-- [ ] I copied the files from `s3:/udacity-dend` to my s3 bucket.  
-  - <font color='green'>[See log/cjl-spark-stage.files.log] for the list of files</font>
+- [ ] <font color='red'>I copied the files from `s3:/udacity-dend` to my s3 bucket. </font> 
+  - See `log/cjl-spark-stage.files.log` for the list of files</font>
+  - Running directly against the `s3:/udacity-dend/song_data` dataset caused the following problems for me:
+  ```
+  22/07/17 20:47:15 INFO ETL: READING from : s3:/udacity-dend/song_data
+  22/07/17 20:47:16 INFO ClientConfigurationFactory: Set initial getObject socket timeout to 2000 ms.
+  Traceback (most recent call last):
+  File "/home/hadoop/etl.py", line 222, in <module>
+  main()
+  File "/home/hadoop/etl.py", line 217, in main
+  process_song_data(fs=fs)
+  File "/home/hadoop/etl.py", line 103, in process_song_data
+  stage_song_df = fs.read_fs_data(prefix=song_data)
+  File "/home/hadoop/etl.py", line 73, in read_fs_data
+  .json(path)
+  File "/usr/lib/spark/python/lib/pyspark.zip/pyspark/sql/readwriter.py", line 372, in json
+  File "/usr/lib/spark/python/lib/py4j-0.10.9-src.zip/py4j/java_gateway.py", line 1305, in __call__
+  File "/usr/lib/spark/python/lib/pyspark.zip/pyspark/sql/utils.py", line 111, in deco
+  File "/usr/lib/spark/python/lib/py4j-0.10.9-src.zip/py4j/protocol.py", line 328, in get_return_value
+  py4j.protocol.Py4JJavaError: An error occurred while calling o68.json.
+  : java.lang.NullPointerException: bucket is marked non-null but is null
+  ```
  
-- [ ] Adding partitionBy seemed to add significantly to the load - I needed 4 core instances to complete the large dataset.  I'm sure there's a lot of additional tuning possible.
+- [ ] <font color='red'>Adding `partitionBy` seemed to add <u>significantly</u> to the load - especially for songs_data </font>
+  - I needed 4 core instances to complete the large dataset.  I'm sure there's a lot of additional tuning possible.
 ---
 ##### <font color='green'>ETL Requirement: </font>
 - [ ] Using pyspark running on an EMR cluster<br>
@@ -43,11 +64,11 @@
 - Create an EMR cluster (I used the console)
 - ssh into the master node and copy etl.py into `/home/hadoop`
 - Update the following variables in etl.py
-  - RUN_ENVIRONMENT = "LOCAL" to test in the laptop,  or "EMR" to run on EMR
-  - EMR_VERSION : int = 5 or 6 - tested with both
-  - STAGE_DIRECTORY = <the root staging folder e.g. `s3://cjl-spark-stage/*`>
-  - LAKE_DIRECTORY = <the root output folder e.g. `s3://cjl-spark-datalake`>
-  - Run> spark-submit etl.py 2>&1 | grep ETL
+  - <font color='yellow'>RUN_ENVIRONMENT</font> = "LOCAL" to test in the laptop,  or "EMR" to run on EMR
+  - <font color='yellow'>EMR_VERSION</font> : int = 5 if we are running on emr version 5.*** or 6.*** - I tested with both
+  - <font color='yellow'>STAGE_DIRECTORY</font> = <the root staging folder e.g. `s3://cjl-spark-stage/*`>
+  - <font color='yellow'>LAKE_DIRECTORY</font> = <the root output folder e.g. `s3://cjl-spark-datalake`>
+  - <font color='yellow'>FEATURE_PARTITIONED_WRITES</font> = whether to partition the writes using partitionBy - or ignore the partitions argument
 
 - INSERT into the LAKE_DIRECTORY star schema containing the following tables:
   - `fact_songplays` --  events where users have 'listened' to a song

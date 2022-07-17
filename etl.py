@@ -7,20 +7,40 @@ from pyspark.sql import functions as F
 from pyspark.sql.dataframe import DataFrame
 from pyspark.sql.types import IntegerType
 from pyspark.sql.types import StructType
+"""
+- AWS copy data from the `s3:/udacity-dend/*` to `s3://cjl-spark-stage/*`
+- Create an EMR cluster (I used the console)
+- ssh into the master node and copy etl.py into `/home/hadoop`
+- Update the following variables in etl.py
+  - RUN_ENVIRONMENT</font> = "LOCAL" to test in the laptop,  or "EMR" to run on EMR
+  - EMR_VERSION</font> : int = 5 if we are running on emr version 5.*** or 6.*** - I tested with both
+  - STAGE_DIRECTORY</font> = <the root staging folder e.g. `s3://cjl-spark-stage/*`>
+  - LAKE_DIRECTORY</font> = <the root output folder e.g. `s3://cjl-spark-datalake`>
+  - FEATURE_PARTITIONED_WRITES</font> = whether to partition the writes using partitionBy - or ignore the partitions argument
 
+- INSERT into the LAKE_DIRECTORY star schema containing the following tables:
+  - `fact_songplays` --  events where users have 'listened' to a song
+  - `dim_song` -- information about each song, such as title, duration, etc.
+  - `dim_user` -- a user is the persona that listened to each song
+  - `dim_artist`  --- an artist is the person who created each song
+  - `dim_time` -- the time dimension just breaks out the timestamp of each event into data parts
+
+
+"""
 APP_NAME = "cjl-udacity-project"
-FEATURE_PARTITIONED_WRITES : bool = True
-FEATURE_PARTITIONED_WRITES : bool = True
 
-# create_spark_session
+
+# --------------------  Global Spark Session ---------------------
 spark = SparkSession \
     .builder \
     .appName(APP_NAME) \
     .getOrCreate()
 
-# Configurations
-RUN_ENVIRONMENT = "LOCAL"
-EMR_VERSION: int = 6
+# --------------------  Configurations --------------------- - TODO move all of these into a configuration file
+FEATURE_PARTITIONED_WRITES: bool = True
+FEATURE_VALIDATION: bool = True
+RUN_ENVIRONMENT = "EMR"
+EMR_VERSION: int = 6  # 5 for version emr-5.*** and 6 for version emr-6***
 
 if RUN_ENVIRONMENT == "EMR":
     # STAGE_DIRECTORY = "s3:/udacity-dend"
@@ -41,9 +61,12 @@ else:
     logging.getLogger().setLevel(logging.INFO)
 
 
-# Code
+# --------------------  Code --------------------- -
 
 class MyFileSystem:
+    """
+    Class that handles all read/write logic
+    """
     output_file_type: str = "parquet"
     schemas: dict = {
         "song_data": StructType.fromJson(json.loads(
@@ -58,8 +81,15 @@ class MyFileSystem:
         self.perform_validations = perform_validations
 
     def read_fs_data(self, prefix: str) -> DataFrame:
+        """
+        Given a prefix - such as "song_data" -read all files under the prefix
+        :param prefix: a subdirectory such as song_data, or log_data
+        :return: Return the DataFrame
+        """
         path = f"""{self.input_folder}/{prefix}"""
         emr: int = int(EMR_VERSION)
+        # version emr 5 with Spark 2 does not sometimes seem to handle recursive
+        # - if that happens we can define a specific level to get the data from
         if emr < 6:
             if prefix == "song_data":
                 path = f"""{self.input_folder}/{prefix}/*/*/*/*.json"""
@@ -67,35 +97,71 @@ class MyFileSystem:
                 path = f"""{self.input_folder}/{prefix}/*/*/*.json"""
 
         logging.info(f"READING from : {path}")
+
+        # perform the read
         df = spark.read \
             .schema(self.schemas[prefix]) \
             .option("recursiveFileLookup", "true") \
             .json(path)
         logging.info(f"""READ {df.count()} song records """)
-        # logging.info(f"SCHEMA: {df.schema.json()}")
         return df
 
-    def write_fs_data(self, df: DataFrame, prefix: str, partitions: List[str] = []):
+    def write_fs_data(self, df: DataFrame, prefix: str, partitions=None):
+        """
+        Write a DataFram to the prefix (table) provided
+            - partition the writes if required
+
+        :param df: The DataFram to write
+        :param prefix: the filesystem location (table) to write to
+        :param partitions: a list of columns to partitionBy()
+
+        """
+        if partitions is None:
+            partitions = []
         path = f"{self.output_folder}/{prefix}"
+
+        # prepare the data frame writer
         dfw = df.write \
             .format(self.output_file_type) \
             .partitionBy(partitions) \
             .mode('overwrite')
-        if len(partitions) == 0:
+        # conditionally all partitions
+        if FEATURE_PARTITIONED_WRITES and len(partitions) == 0:
             dfw.partitionBy(*partitions)
+
+        # Perform write
         dfw.save(path)
         logging.info(f"""WRITING to path: {path},    counted {df.count()} records""")
 
-        if self.perform_validations:
+        if FEATURE_VALIDATION and self.perform_validations:
             self.verify_written_data(path=path, schema=df.schema)
 
     def verify_written_data(self, path: str, schema: StructType) -> DataFrame:
+        """
+        Read the written data back - to chck that we got the same counts
+
+        :param path: the path to read from
+        :param schema: the schema of the data we are reading
+
+        :return: The DataFrame we read
+        """
         df = spark.read.format(self.output_file_type).schema(schema=schema).load(path)
         logging.info(f"""VALIDATE : {path},        read back {df.count()} records""")
         return df
 
 
 def process_song_data(fs: MyFileSystem) -> DataFrame:
+    """
+    Given a MyFileSystem object, containing read and write utilities,
+    - read the song_data folder
+    - create a tempView table of the data, so we can use SQL
+    - create a dim_song dimension and write it to s3
+    - create a dim_artist dimension and write it to s3
+
+    :param fs: A MyFileSystem object
+
+    :return: the song_data DatFrame in case we need it
+    """
     # get filepath to song data file - append to fs
     song_data = "song_data"
 
@@ -126,6 +192,19 @@ def process_song_data(fs: MyFileSystem) -> DataFrame:
 
 
 def process_log_data(fs: MyFileSystem):
+    """
+    Given a MyFileSystem object, containing read and write utilities,
+    - read the log_data folder
+    - create a tempView table of the data, so we can use SQL
+    - create a dim_user dimension and write it to s3
+    - create a dim_time dimension and write it to s3
+    - create a fact_songplays dimension (by joining the song and log temp views) and write it to s3
+
+    :param fs: A MyFileSystem object
+
+    :return: the song_data DatFrame in case we need it
+    """
+
     # get filepath to log data file
     log_data = "log_data"
 
